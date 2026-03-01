@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#08090c">
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<title>Lines — Montana Property Viewer</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg-deep:#08090c;--bg-card:#0f1117;--bg-card-alpha:rgba(15,17,23,0.85);
+  --border:#1a1d28;--text-primary:#e8eaf0;--text-secondary:#6b7084;--text-dim:#3d4155;
+  --green:#22c55e;--blue:#3fc1f0;--yellow:#e5a00d;--purple:#bb9af7;
+  --radius:12px;
+}
+body{font-family:'Outfit',sans-serif;background:var(--bg-deep);color:var(--text-primary);overflow:hidden;height:100dvh;width:100vw}
+#map{position:absolute;inset:0;z-index:0}
+
+/* Search bar */
+.search-bar{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:1000;width:min(500px,calc(100vw - 32px));display:flex;gap:8px}
+.search-bar input{flex:1;background:var(--bg-card-alpha);backdrop-filter:blur(20px);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px 12px 42px;color:var(--text-primary);font:400 15px 'Outfit',sans-serif;outline:none;transition:border-color .2s}
+.search-bar input:focus{border-color:var(--yellow)}
+.search-bar .search-icon{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--text-dim);pointer-events:none;font-size:18px}
+.search-bar select{background:var(--bg-card-alpha);backdrop-filter:blur(20px);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;color:var(--text-secondary);font:400 13px 'Outfit',sans-serif;outline:none;max-width:140px}
+.search-results{position:absolute;top:100%;left:0;right:0;margin-top:8px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);max-height:300px;overflow-y:auto;display:none}
+.search-results.active{display:block}
+.search-result{padding:12px 16px;cursor:pointer;border-bottom:1px solid var(--border);transition:background .15s}
+.search-result:hover{background:rgba(229,160,13,0.08)}
+.search-result:last-child{border-bottom:none}
+.search-result .sr-addr{font-weight:500;font-size:14px}
+.search-result .sr-owner{color:var(--text-secondary);font-size:12px;margin-top:2px}
+.search-result .sr-value{color:var(--yellow);font-family:'JetBrains Mono',monospace;font-size:12px;margin-top:2px}
+
+/* Layer toggles */
+.layer-panel{position:fixed;top:16px;right:16px;z-index:1000;background:var(--bg-card-alpha);backdrop-filter:blur(20px);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;display:flex;flex-direction:column;gap:8px}
+.layer-toggle{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text-secondary);user-select:none;transition:color .15s}
+.layer-toggle:hover{color:var(--text-primary)}
+.layer-toggle .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.layer-toggle input{display:none}
+.layer-toggle input:checked~.lbl{color:var(--text-primary)}
+.layer-toggle input:not(:checked)~.dot{opacity:0.3}
+
+/* Stats bar */
+.stats-bar{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:1000;background:var(--bg-card-alpha);backdrop-filter:blur(20px);border:1px solid var(--border);border-radius:var(--radius);padding:8px 20px;display:flex;gap:24px;font-size:13px;color:var(--text-secondary);white-space:nowrap;transition:opacity .3s}
+.stats-bar span{font-family:'JetBrains Mono',monospace}
+.stats-bar .label{color:var(--text-dim);margin-right:4px}
+
+/* Zoom message */
+.zoom-msg{position:fixed;bottom:60px;left:50%;transform:translateX(-50%);z-index:1000;background:var(--bg-card-alpha);backdrop-filter:blur(20px);border:1px solid var(--border);border-radius:var(--radius);padding:10px 20px;font-size:13px;color:var(--text-secondary);display:none;pointer-events:none}
+
+/* Map controls */
+.map-controls{position:fixed;bottom:80px;right:16px;z-index:1000;display:flex;flex-direction:column;gap:8px}
+.map-btn{width:40px;height:40px;background:var(--bg-card-alpha);backdrop-filter:blur(20px);border:1px solid var(--border);border-radius:10px;color:var(--text-secondary);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.map-btn:hover{color:var(--text-primary);border-color:var(--yellow)}
+
+/* Property detail panel — desktop sidebar */
+.detail-panel{position:fixed;top:0;left:0;width:380px;height:100dvh;background:var(--bg-card);border-right:1px solid var(--border);z-index:999;transform:translateX(-100%);transition:transform .3s ease;overflow-y:auto;padding:80px 24px 24px}
+.detail-panel.open{transform:translateX(0)}
+.detail-panel .close-btn{position:absolute;top:20px;right:20px;background:none;border:none;color:var(--text-dim);font-size:24px;cursor:pointer}
+.detail-panel h2{font-size:18px;font-weight:600;margin-bottom:4px}
+.detail-panel .subtitle{color:var(--text-secondary);font-size:13px;margin-bottom:20px}
+.detail-panel .section{margin-bottom:20px}
+.detail-panel .section-title{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--text-dim);margin-bottom:8px;font-weight:500}
+.detail-panel .row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)}
+.detail-panel .row .lbl{color:var(--text-secondary);font-size:13px}
+.detail-panel .row .val{font-family:'JetBrains Mono',monospace;font-size:13px;text-align:right;max-width:60%}
+.detail-panel .val.currency{color:var(--yellow)}
+.detail-panel .val.acres{color:var(--green)}
+
+/* Mobile: bottom sheet */
+@media(max-width:767px){
+  .search-bar{top:12px;width:calc(100vw - 24px)}
+  .search-bar select{display:none}
+  .layer-panel{top:auto;bottom:80px;right:12px;padding:8px 12px}
+  .detail-panel{top:auto;bottom:0;left:0;right:0;width:100%;height:auto;max-height:80dvh;border-right:none;border-top:1px solid var(--border);border-radius:var(--radius) var(--radius) 0 0;transform:translateY(100%);padding:16px 20px 24px}
+  .detail-panel.open{transform:translateY(0)}
+  .detail-panel .handle{width:40px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 16px}
+  .stats-bar{bottom:12px;padding:6px 14px;gap:16px;font-size:11px}
+}
+
+/* Desktop: push map */
+@media(min-width:768px){
+  .detail-panel.open~#map{left:380px}
+  .search-bar{left:calc(50% + 190px);transition:left .3s}
+  .detail-panel.open~.search-bar{left:calc(50% + 190px)}
+}
+
+/* Hide leaflet default controls */
+.leaflet-control-zoom{display:none!important}
+.leaflet-control-attribution{font-size:10px!important;background:rgba(8,9,12,0.7)!important;color:var(--text-dim)!important}
+.leaflet-control-attribution a{color:var(--text-secondary)!important}
+</style>
+</head>
+<body>
+
+<div class="search-bar">
+  <span class="search-icon">⌕</span>
+  <input type="text" id="searchInput" placeholder="Search address, owner, or parcel ID…" autocomplete="off">
+  <select id="countyFilter"><option value="">All Counties</option></select>
+  <div class="search-results" id="searchResults"></div>
+</div>
+
+<div class="layer-panel">
+  <label class="layer-toggle"><input type="checkbox" id="layerParcels" checked><span class="dot" style="background:var(--yellow)"></span><span class="lbl">Parcels</span></label>
+  <label class="layer-toggle"><input type="checkbox" id="layerPublic"><span class="dot" style="background:var(--green)"></span><span class="lbl">Public Lands</span></label>
+  <label class="layer-toggle"><input type="checkbox" id="layerConservation"><span class="dot" style="background:var(--blue)"></span><span class="lbl">Conservation</span></label>
+  <label class="layer-toggle"><input type="checkbox" id="layerSatellite"><span class="dot" style="background:var(--purple)"></span><span class="lbl">Satellite</span></label>
+</div>
+
+<div class="zoom-msg" id="zoomMsg">Zoom in to see property lines</div>
+
+<div class="stats-bar" id="statsBar" style="opacity:0">
+  <div><span class="label">Parcels</span><span id="statCount">0</span></div>
+  <div><span class="label">Total Value</span><span id="statValue">$0</span></div>
+  <div><span class="label">Avg $/acre</span><span id="statAvg">$0</span></div>
+</div>
+
+<div class="map-controls">
+  <button class="map-btn" id="btnLocate" title="My location">📍</button>
+  <button class="map-btn" id="btnZoomIn" title="Zoom in">+</button>
+  <button class="map-btn" id="btnZoomOut" title="Zoom out">−</button>
+</div>
+
+<div class="detail-panel" id="detailPanel">
+  <div class="handle"></div>
+  <button class="close-btn" id="closeDetail">✕</button>
+  <h2 id="detailAddr">—</h2>
+  <div class="subtitle" id="detailCity">—</div>
+  <div id="detailBody"></div>
+</div>
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const map = L.map('map',{zoomControl:false}).setView([46.8721,-113.994],12);
+
+const darkTiles = L.tileLayer('https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
+  attribution:'© <a href="https://carto.com">CARTO</a> © <a href="https://openstreetmap.org">OSM</a>',
+  maxZoom:20
+}).addTo(map);
+
+const satTiles = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{
+  attribution:'© Esri',maxZoom:19
+});
+
+// Layers
+let parcelLayer = L.geoJSON(null,{
+  style:()=>({color:'#e5a00d',weight:1.5,opacity:0.6,fillOpacity:0}),
+  onEachFeature:(f,layer)=>{
+    layer.on('click',()=>selectParcel(f,layer));
+  }
+}).addTo(map);
+
+let publicLayer = L.geoJSON(null,{
+  style:()=>({color:'#22c55e',weight:1,opacity:0.5,fillColor:'#22c55e',fillOpacity:0.1})
+});
+
+let conserveLayer = L.geoJSON(null,{
+  style:()=>({color:'#3fc1f0',weight:1,opacity:0.5,fillColor:'#3fc1f0',fillOpacity:0.1})
+});
+
+let selectedLayer = null;
+
+// Layer toggles
+document.getElementById('layerParcels').addEventListener('change',e=>{
+  e.target.checked?map.addLayer(parcelLayer):map.removeLayer(parcelLayer);
+});
+document.getElementById('layerPublic').addEventListener('change',e=>{
+  if(e.target.checked){map.addLayer(publicLayer);loadPublicLands();}
+  else map.removeLayer(publicLayer);
+});
+document.getElementById('layerConservation').addEventListener('change',e=>{
+  if(e.target.checked){map.addLayer(conserveLayer);loadConservation();}
+  else map.removeLayer(conserveLayer);
+});
+document.getElementById('layerSatellite').addEventListener('change',e=>{
+  if(e.target.checked){map.removeLayer(darkTiles);map.addLayer(satTiles);}
+  else{map.removeLayer(satTiles);map.addLayer(darkTiles);}
+});
+
+// Map controls
+document.getElementById('btnZoomIn').onclick=()=>map.zoomIn();
+document.getElementById('btnZoomOut').onclick=()=>map.zoomOut();
+document.getElementById('btnLocate').onclick=()=>map.locate({setView:true,maxZoom:16});
+
+// Load parcels on map move
+let debounceTimer;
+function onMapMove(){
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(()=>{
+    if(map.getZoom()>=14){
+      document.getElementById('zoomMsg').style.display='none';
+      loadParcels();
+      if(document.getElementById('layerPublic').checked) loadPublicLands();
+      if(document.getElementById('layerConservation').checked) loadConservation();
+    } else {
+      document.getElementById('zoomMsg').style.display='block';
+      document.getElementById('statsBar').style.opacity='0';
+    }
+  },300);
+}
+map.on('moveend',onMapMove);
+map.on('zoomend',onMapMove);
+
+function getBbox(){
+  const b=map.getBounds();
+  return `${b.getWest()},${b.getSouth()},${b.getEast()},${b.getNorth()}`;
+}
+
+async function loadParcels(){
+  try{
+    const county=document.getElementById('countyFilter').value;
+    let url=`/api/parcels?bbox=${getBbox()}`;
+    if(county) url+=`&county=${county}`;
+    const r=await fetch(url);
+    const data=await r.json();
+    parcelLayer.clearLayers();
+    if(data.features){
+      parcelLayer.addData(data);
+      updateStats(data.features);
+    }
+  }catch(e){console.error('Load parcels:',e)}
+}
+
+async function loadPublicLands(){
+  try{
+    const r=await fetch(`/api/public-lands?bbox=${getBbox()}`);
+    const data=await r.json();
+    publicLayer.clearLayers();
+    if(data.features) publicLayer.addData(data);
+  }catch(e){console.error(e)}
+}
+
+async function loadConservation(){
+  try{
+    const r=await fetch(`/api/conservation?bbox=${getBbox()}`);
+    const data=await r.json();
+    conserveLayer.clearLayers();
+    if(data.features) conserveLayer.addData(data);
+  }catch(e){console.error(e)}
+}
+
+function fmt$(v){return v!=null?'$'+Number(v).toLocaleString():'—'}
+function fmtAcres(v){return v!=null?Number(v).toLocaleString(undefined,{maximumFractionDigits:1})+' ac':'—'}
+
+function updateStats(features){
+  const bar=document.getElementById('statsBar');
+  const count=features.length;
+  let totalVal=0,totalAcres=0;
+  features.forEach(f=>{
+    const p=f.properties;
+    if(p.TotalValue) totalVal+=p.TotalValue;
+    if(p.TotalAcres) totalAcres+=p.TotalAcres;
+  });
+  document.getElementById('statCount').textContent=count;
+  document.getElementById('statValue').textContent=fmt$(totalVal);
+  document.getElementById('statAvg').textContent=totalAcres>0?fmt$(Math.round(totalVal/totalAcres)):'—';
+  bar.style.opacity='1';
+}
+
+function selectParcel(feature,layer){
+  if(selectedLayer) parcelLayer.resetStyle(selectedLayer);
+  selectedLayer=layer;
+  layer.setStyle({color:'#e5a00d',weight:3,opacity:1,fillColor:'#e5a00d',fillOpacity:0.2});
+  showDetail(feature.properties);
+}
+
+function showDetail(p){
+  document.getElementById('detailAddr').textContent=p.AddressLine1||'No Address';
+  document.getElementById('detailCity').textContent=p.CityStateZip||p.CountyName||'';
+  
+  const acreBreakdown=[];
+  if(p.IrrigatedAcres) acreBreakdown.push(`Irrigated: ${p.IrrigatedAcres}`);
+  if(p.GrazingAcres) acreBreakdown.push(`Grazing: ${p.GrazingAcres}`);
+  if(p.ForestAcres) acreBreakdown.push(`Forest: ${p.ForestAcres}`);
+  if(p.FarmsiteAcres) acreBreakdown.push(`Farmsite: ${p.FarmsiteAcres}`);
+  if(p.WildHayAcres) acreBreakdown.push(`Wild Hay: ${p.WildHayAcres}`);
+  if(p.ContinuousCropAcres) acreBreakdown.push(`Crop: ${p.ContinuousCropAcres}`);
+  if(p.FallowAcres) acreBreakdown.push(`Fallow: ${p.FallowAcres}`);
+  if(p.NonQualAcres) acreBreakdown.push(`Non-Qual: ${p.NonQualAcres}`);
+
+  const rows = (items) => items.map(([l,v,cls])=>`<div class="row"><span class="lbl">${l}</span><span class="val ${cls||''}">${v}</span></div>`).join('');
+  
+  document.getElementById('detailBody').innerHTML=`
+    <div class="section">
+      <div class="section-title">Valuation</div>
+      ${rows([
+        ['Total Value',fmt$(p.TotalValue),'currency'],
+        ['Land Value',fmt$(p.TotalLandValue),'currency'],
+        ['Building Value',fmt$(p.TotalBuildingValue),'currency'],
+      ])}
+    </div>
+    <div class="section">
+      <div class="section-title">Acreage</div>
+      ${rows([['Total Acres',fmtAcres(p.TotalAcres),'acres']])}
+      ${acreBreakdown.length?'<div style="padding:6px 0;color:var(--text-dim);font-size:12px">'+acreBreakdown.join(' · ')+'</div>':''}
+    </div>
+    <div class="section">
+      <div class="section-title">Owner</div>
+      ${rows([
+        ['Name',p.OwnerName||'—',''],
+        ['Address',p.OwnerAddress1||'—',''],
+        ['City/State',[p.OwnerCity,p.OwnerState,p.OwnerZipCode].filter(Boolean).join(', ')||'—',''],
+      ])}
+    </div>
+    <div class="section">
+      <div class="section-title">Property Details</div>
+      ${rows([
+        ['Type',p.PropType||'—',''],
+        ['Legal',p.LegalDescriptionShort||'—',''],
+        ['T/R/S',[p.Township,p.Range,p.Section].filter(Boolean).join('/')||'—',''],
+        ['Subdivision',p.Subdivision||'—',''],
+        ['Levy District',p.LevyDistrict||'—',''],
+        ['Tax Year',p.TaxYear||'—',''],
+        ['Parcel ID',p.PARCELID||'—',''],
+      ])}
+    </div>
+  `;
+  document.getElementById('detailPanel').classList.add('open');
+}
+
+document.getElementById('closeDetail').onclick=()=>{
+  document.getElementById('detailPanel').classList.remove('open');
+  if(selectedLayer){parcelLayer.resetStyle(selectedLayer);selectedLayer=null;}
+};
+
+// Search
+let searchTimer;
+const searchInput=document.getElementById('searchInput');
+const searchResults=document.getElementById('searchResults');
+
+searchInput.addEventListener('input',()=>{
+  clearTimeout(searchTimer);
+  const q=searchInput.value.trim();
+  if(q.length<3){searchResults.classList.remove('active');return;}
+  searchTimer=setTimeout(async()=>{
+    try{
+      const county=document.getElementById('countyFilter').value;
+      let url=`/api/search?q=${encodeURIComponent(q)}`;
+      if(county) url+=`&county=${county}`;
+      const r=await fetch(url);
+      const data=await r.json();
+      if(data.features&&data.features.length){
+        searchResults.innerHTML=data.features.map((f,i)=>{
+          const p=f.properties;
+          return `<div class="search-result" data-idx="${i}">
+            <div class="sr-addr">${p.AddressLine1||p.PARCELID||'No Address'}</div>
+            <div class="sr-owner">${p.OwnerName||''} · ${p.CountyName||''}</div>
+            <div class="sr-value">${fmt$(p.TotalValue)} · ${fmtAcres(p.TotalAcres)}</div>
+          </div>`;
+        }).join('');
+        searchResults.classList.add('active');
+        // Click handlers
+        searchResults.querySelectorAll('.search-result').forEach((el,i)=>{
+          el.onclick=()=>{
+            const f=data.features[i];
+            searchResults.classList.remove('active');
+            searchInput.value=f.properties.AddressLine1||f.properties.PARCELID||'';
+            if(f.geometry){
+              const gjLayer=L.geoJSON(f);
+              map.fitBounds(gjLayer.getBounds(),{maxZoom:17});
+              setTimeout(()=>{
+                // Reload parcels and find/select this one
+                loadParcels().then(()=>{
+                  parcelLayer.eachLayer(l=>{
+                    if(l.feature&&l.feature.properties.PARCELID===f.properties.PARCELID){
+                      selectParcel(l.feature,l);
+                    }
+                  });
+                });
+              },500);
+            }
+            showDetail(f.properties);
+          };
+        });
+      } else {
+        searchResults.innerHTML='<div style="padding:16px;color:var(--text-dim);font-size:13px">No results</div>';
+        searchResults.classList.add('active');
+      }
+    }catch(e){console.error(e)}
+  },400);
+});
+
+document.addEventListener('click',e=>{
+  if(!e.target.closest('.search-bar')) searchResults.classList.remove('active');
+});
+
+// Load counties
+fetch('/api/counties').then(r=>r.json()).then(counties=>{
+  const sel=document.getElementById('countyFilter');
+  counties.forEach(c=>{
+    const o=document.createElement('option');
+    o.value=c;o.textContent=c.charAt(0)+c.slice(1).toLowerCase();
+    sel.appendChild(o);
+  });
+});
+
+// Mobile bottom sheet touch handling
+const panel=document.getElementById('detailPanel');
+let touchStartY=0;
+panel.addEventListener('touchstart',e=>{touchStartY=e.touches[0].clientY},{passive:true});
+panel.addEventListener('touchmove',e=>{
+  const dy=e.touches[0].clientY-touchStartY;
+  if(dy>80) panel.classList.remove('open');
+},{passive:true});
+
+// Initial load
+onMapMove();
+</script>
+</body>
+</html>

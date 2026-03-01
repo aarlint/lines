@@ -1,0 +1,20 @@
+services:
+  lines:
+    build: .
+    container_name: lines
+    restart: unless-stopped
+    volumes:
+      - lines-data:/app/data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.lines.rule=Host(`lines.lan`)"
+      - "traefik.http.services.lines.loadbalancer.server.port=3003"
+    networks:
+      - traefik-proxy
+
+volumes:
+  lines-data:
+
+networks:
+  traefik-proxy:
+    external: true

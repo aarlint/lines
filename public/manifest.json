@@ -1,0 +1,12 @@
+{
+  "name": "Lines",
+  "short_name": "Lines",
+  "description": "Montana Property Lines Viewer",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#08090c",
+  "theme_color": "#e5a00d",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
